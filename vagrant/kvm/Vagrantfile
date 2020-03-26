@@ -1,0 +1,209 @@
+#########################
+##### Internal Variables
+#########################
+
+NET_BRIDGE_ADAPTER = "wifi0"
+#NET_BRIDGE_ADAPTER = "eno1"
+
+jumpbox_hostname = "jumpbox01"
+
+# Used only if jumpbox name is matched
+
+ssh_guest_jmp_prv_key = File.read("ssh_keys/id_rsa_jumpbox")
+ssh_guest_jmp_pub_key = File.read("ssh_keys/id_rsa_jumpbox.pub")
+
+# Used for all boxes that are not jumpboxes
+
+ssh_guest_vm_prv_key = File.read("ssh_keys/id_rsa_vm")
+ssh_guest_vm_pub_key = File.read("ssh_keys/id_rsa_vm.pub")
+
+if File.file?("#{Dir.home}/.ssh/id_rsa")
+	ssh_host_orig_prv_key = File.read("#{Dir.home}/.ssh/id_rsa")
+	ssh_host_orig_pub_key = File.read("#{Dir.home}/.ssh/id_rsa.pub")
+else
+	puts "No HOST SSH key found. You will need to remedy this."
+end
+
+ssh_guest_username = "vagrant"
+ssh_guest_password = "vagrant"
+ssh_guest_password = File.read("password.txt")
+
+
+Vagrant.configure(2) do |config|
+
+	#########################
+	##### Common configuration
+	#########################
+
+	#config.vm.box = "sektorcoder/centos-7-1810-minimal"
+	config.vm.box = "sektorcoder/debian-10-minimal-ssh"
+	config.vm.box_version = "0.7"
+	#config.vm.box = "debian/buster64"
+	#config.vm.box_version = "0.0.2"
+	#config.vm.box = "sektorcoder/ubuntu-1804-server-lts"
+	#config.vm.box_version = "0.0.1.1"
+	#config.vm.box_check_update = true
+
+	config.ssh.username = "#{ssh_guest_username}"
+	config.ssh.password = "#{ssh_guest_password}"
+	config.ssh.forward_agent = true
+	config.ssh.keys_only = false
+	config.ssh.insert_key = false
+
+	config.vm.synced_folder ".", "/vagrant", disabled: true
+
+	#########################
+	##### Starting boxes
+	#########################
+
+	config.vm.define :kubemaster01 do |kubemaster01|
+		kubemaster01.vm.provider :libvirt do |vb|
+			vb.cpus = 4
+			vb.memory = 3000
+		end
+		kubemaster01.vm.hostname = "kubemaster01"
+		kubemaster01.vm.network :public_network, 
+			:mode => "bridge",
+			:dev => "#{NET_BRIDGE_ADAPTER}", 
+			:netmask => "255.255.255.0", 
+			:ip => "192.168.2.150",
+			#:ip => "10.10.4.129" ,
+			:mac => "5CA1AB1E0001"
+	end
+
+	config.vm.define :kubehost01 do |kubehost01|
+		kubehost01.vm.provider :libvirt do |vb|
+			vb.cpus = 3
+			vb.memory = 4000
+		end
+		kubehost01.vm.hostname = "kubehost01"
+		kubehost01.vm.network :public_network, 
+		:mode => "bridge",
+		:dev => "#{NET_BRIDGE_ADAPTER}", 
+		:netmask => "255.255.255.0", 
+		:ip => "192.168.2.151",
+		#:ip => "10.10.4.130" ,
+		:mac => "5CA1AB1E0002"
+	end
+
+	config.vm.define :kubehost02 do |kubehost02|
+		kubehost02.vm.provider :libvirt do |vb|
+			vb.cpus = 3
+			vb.memory = 4000
+		end
+		kubehost02.vm.hostname = "kubehost02"
+		kubehost02.vm.network :public_network, 
+		:mode => "bridge",
+		:dev => "#{NET_BRIDGE_ADAPTER}", 
+		:netmask => "255.255.255.0", 
+		:ip => "192.168.2.152",
+		#:ip => "10.10.4.131" ,
+		:mac => "5CA1AB1E0003"
+	end
+
+#########################
+##### Post Provision 
+##### Inline commands
+#########################
+
+	config.vm.provision "shell" do |s|
+
+	  s.inline = <<-SHELL
+	  	
+	  	USRINLINE=vagrant
+
+	  	HOMEFLD=/home/${USRINLINE}
+	  	HOMESSHFLD=${HOMEFLD}/.ssh
+	  	ROOTSSHFLD=/root/.ssh
+
+			mkdir -p ${ROOTSSHFLD}
+	  	mkdir -p ${HOMESSHFLD}
+	  	#rm ${HOMESSHFLD}/{id_rsa,id_rsa.pub}
+
+
+	    if [[ "${HOSTNAME}" != "#{jumpbox_hostname}" ]]; then
+	    	echo "No JUMPBOX"
+	    	VMPRVKEY="#{ssh_guest_vm_prv_key}"
+	    	VMPUBKEY="#{ssh_guest_vm_pub_key}"
+	    else
+	    	echo "Found JUMPBOX #{jumpbox_hostname}"
+	    	VMPRVKEY="#{ssh_guest_jmp_prv_key}"
+	    	VMPUBKEY="#{ssh_guest_jmp_pub_key}"
+	    fi
+
+	  	##############################
+	    # Authorised keys to guest VM
+	    ##############################
+
+	  	touch ${HOMESSHFLD}/authorized_keys
+
+	    if grep -sq "#{ssh_host_orig_pub_key}" ${HOMESSHFLD}/authorized_keys; then
+	      echo "SSH USER (${USRINLINE}) AUTH keys already provisioned."
+	    else
+	      echo "#{ssh_host_orig_pub_key}" >> ${HOMESSHFLD}/authorized_keys
+	    fi
+
+	  	touch ${ROOTSSHFLD}/authorized_keys
+
+	    if grep -sq "#{ssh_host_orig_pub_key}" ${ROOTSSHFLD}/authorized_keys; then
+	      echo "SSH USER (root) AUTH keys already provisioned."
+	    else
+	      echo "#{ssh_host_orig_pub_key}" >> ${ROOTSSHFLD}/authorized_keys
+	    fi
+
+		if [[ "${HOSTNAME}" != "#{jumpbox_hostname}" ]]; then
+			echo "Adding jumpbox key to user home folder ..."
+		    if grep -sq "#{ssh_guest_jmp_pub_key}" ${HOMESSHFLD}/authorized_keys; then
+		      echo "SSH USER (${USRINLINE}) JMP AUTH keys already provisioned."
+		    else
+		      echo "#{ssh_guest_jmp_pub_key}" >> ${HOMESSHFLD}/authorized_keys
+		    fi
+
+		    echo "Adding jumpbox key to root home folder ..."
+		    if grep -sq "#{ssh_guest_jmp_pub_key}" ${ROOTSSHFLD}/authorized_keys; then
+		      echo "SSH USER (root) JMP AUTH keys already provisioned."
+		    else
+		      echo "#{ssh_guest_jmp_pub_key}" >> ${ROOTSSHFLD}/authorized_keys
+		    fi
+			
+			
+		fi
+
+	  	##################
+	    # Replace vm keys
+	    ##################
+
+	    # Do it for user
+	    echo "${VMPRVKEY}" > ${HOMESSHFLD}/id_rsa
+	    echo "${VMPUBKEY}" > ${HOMESSHFLD}/id_rsa.pub
+	    chmod 600 ${HOMESSHFLD}/id_rsa
+	    chmod 644 ${HOMESSHFLD}/id_rsa.pub
+	    chown -R ${USRINLINE}:${USRINLINE} ${HOMEFLD}
+	    echo "SSH USER (${USRINLINE}) VM keys provisioned."
+
+	    # Do the same for root
+	    echo "${VMPRVKEY}" > ${ROOTSSHFLD}/id_rsa
+	    echo "${VMPUBKEY}" > ${ROOTSSHFLD}/id_rsa.pub
+	    chmod 600 ${ROOTSSHFLD}/id_rsa
+	    chmod 644 ${ROOTSSHFLD}/id_rsa.pub
+		echo "SSH USER (root) VM keys provisioned."
+
+	  	##################
+	    # Other work
+	    ##################
+
+	    echo "Host *" > ${HOMESSHFLD}/config
+			echo " StrictHostKeyChecking no" >> ${HOMESSHFLD}/config
+			echo "Networking Information :"
+			ip a
+			ip r
+			echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
+	    exit 0
+
+	  SHELL
+	end
+
+end
+
+# In host: 	sudo ip route add 192.168.2.0/24 via 192.168.121.1 dev virbr2
+# In guest: ip route delete default; sudo ip route add default via {default_iface}
