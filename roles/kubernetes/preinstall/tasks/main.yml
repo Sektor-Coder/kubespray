@@ -46,6 +46,13 @@
     - bootstrap-os
     - resolvconf
 
+- import_tasks: 0090-etchosts.yml
+  when:
+    - not dns_late
+  tags:
+    - bootstrap-os
+    - etchosts
+
 - import_tasks: 0070-system-packages.yml
   when:
     - not dns_late

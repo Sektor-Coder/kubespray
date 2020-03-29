@@ -1,7 +1,7 @@
 ---
 ## Uncomment this if you want to force overlay/overlay2 as docker storage driver
 ## Please note that overlay2 is only supported on newer kernels
-# docker_storage_options: -s overlay2
+docker_storage_options: -s overlay2
 
 ## Enable docker_container_storage_setup, it will configure devicemapper driver on Centos7 or RedHat7.
 docker_container_storage_setup: false
@@ -33,9 +33,10 @@ docker_rpm_keepcache: 0
 ## An obvious use case is allowing insecure-registry access to self hosted registries.
 ## Can be ipaddress and domain_name.
 ## example define 172.19.16.11 or mirror.registry.io
-# docker_insecure_registries:
-#   - mirror.registry.io
-#   - 172.19.16.11
+#docker_insecure_registries:
+#  - registry-1.docker.io
+#  - k8s.gcr.io
+#  - quay.io
 
 ## Add other registry,example China registry mirror.
 # docker_registry_mirrors:
@@ -51,4 +52,10 @@ docker_rpm_keepcache: 0
 
 ## A string of extra options to pass to the docker daemon.
 ## This string should be exactly as you wish it to appear.
-# docker_options: ""
+
+docker_options: " -H=0.0.0.0:2376 -H unix:///var/run/docker.sock -D --tlsverify --tlskey=/etc/docker/certs.d/docker-client.key --tlscert=/etc/docker/certs.d/docker-client.cert --tlscacert=/etc/docker/certs.d/mitmproxy-ca-cert.pem  "
+
+# -H=0.0.0.0:2376 -H unix:///var/run/docker.sock --tlsverify --tlscacert=/etc/docker/ssl/ca.pem --tlscert=/etc/docker/ssl/cert.pem --tlskey=/etc/docker/ssl/key.pem
+#/etc/docker/certs.d/docker-client.key
+#/etc/docker/certs.d/docker-client.cert
+#/etc/docker/certs.d/mitmproxy-ca-cert.pem
